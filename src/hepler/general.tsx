@@ -1,5 +1,6 @@
 import printerService from "../services/printerService";
 import { storageService } from "../utils/storage";
+import { Toaster } from "./toaster";
 
 export const handleTestPrint = async (order) => {
   try {
@@ -56,8 +57,11 @@ export const handleTestPrint = async (order) => {
       docketText += "-----------------------------------------------\n";
     });
     docketText += alignLine("Total:", `$${total.toFixed(2)}`);
-    
+
     const result = await printerService.printESCPOS(docketText);
+    if (!result?.success) {
+      new Toaster().error(result?.message)
+    }
     console.log("🖨️ Print result:", result);
     return result;
   } catch (error) {

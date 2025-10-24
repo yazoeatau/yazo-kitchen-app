@@ -1,19 +1,34 @@
-// PosScreen.tsx
-import React, { useEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import Constant from '../apis/constants';
 import { handleTestPrint } from '../hepler/general';
 import Loader from '../hepler/loader';
 import { Toaster } from '../hepler/toaster';
 import printerService from '../services/printerService';
 import { storageService } from '../utils/storage';
 
-const PosScreen: React.FC = () => {
+interface restaurantData {
+  [key: string]: string;
+}
 
-  const [loading, setLoading] = useState<boolean>(true);
-  const [ipAddress, setIpAddress] = useState('192.168.0.39');
-  const [port, setPort] = useState('9100');
-  const [isConnected, setIsConnected] = useState(false);
+interface Printer {
+  id: string;
+  name: string;
+  ipAddress: string;
+  host: string;
+  port: number;
+}
+
+const PosScreen = () => {
+  const [loading, setLoading] = useState(true);
+  const [ipAddress, setIpAddress] = useState('');
+  const [port, setPort] = useState(9100);
+  const [restaurantData, setRestaurantData] = useState<restaurantData>({});
+  const [selectedPrinter, setSelectedPrinter] = useState<Printer[]>([]);
+  const [loader, setLoader] = useState(false);
+  const webviewRef = useRef<WebView>(null);
+
 
   const loadSavedConfig = async () => {
     const config = await storageService.getPrinterConfig();
@@ -24,43 +39,49 @@ const PosScreen: React.FC = () => {
   };
 
 
-  useEffect(() => {
-    loadSavedConfig();
-    printerService.setStatusCallback((status) => {
-      setIsConnected(status.isConnected);
-    });
-  }, []);
-
-
-  useEffect(() => {
-    setTimeout(() => {
-      handleConnect()
-    }, 2000)
-  }, []);
-
-
   const handleConnect = async () => {
     const portNum = parseInt(port, 10);
-    if (!ipAddress || isNaN(portNum)) {
-      return;
-    }
+    if (!ipAddress || isNaN(portNum)) return;
     const config = { host: ipAddress, port: portNum };
     await storageService.savePrinterConfig(config);
     printerService.connect(config);
   };
 
 
+  useEffect(() => {
+    loadSavedConfig();
+    printerService.setStatusCallback((status) => {
+      if (status.isConnected) {
+        new Toaster().success('Printer Connected');
+      }
+    });
+    const timer = setTimeout(handleConnect, 2000);
+    return () => clearTimeout(timer);
+  }, [ipAddress]);
+
+
+  const getLocalStorage = () => {
+    webviewRef.current?.injectJavaScript(`
+    (function() {
+      const data = {
+        restaurantId: localStorage.getItem('restaurantId'),
+        yazo_auth_token: localStorage.getItem('yazo_auth_token')
+      };
+      window.ReactNativeWebView.postMessage(JSON.stringify({ localStorage: data }));
+    })();
+    true;
+  `);
+  };
+
+
   const handleMessage = async (event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      if (data?.status === 'success') {
-        let order = data?.order;
-        console.log(order, "----order");
-        if (order) {
-          await handleTestPrint(order);
-        }
-      } else {
-        console.log("Webview error");
+      if (data?.localStorage) {
+        setRestaurantData(data.localStorage);
+      }
+      if (data?.status === 'success' && data?.order) {
+        await handleTestPrint(data.order);
       }
     } catch (err) {
       console.error('Invalid JSON from WebView', err);
@@ -69,37 +90,82 @@ const PosScreen: React.FC = () => {
 
 
   useEffect(() => {
-    setTimeout(() => {
-      if (isConnected) {
-        new Toaster().success("Printer Connected");
+    getPrinterListing()
+  }, [restaurantData?.restaurantId])
+
+  const removeQuotes = (str: string): string => {
+    if (!str) return '';
+    return str.replace(/^"|"$/g, '');
+  };
+
+  const getPrinterListing = async () => {
+    if (!restaurantData?.restaurantId) {
+      console.warn("Restaurant ID not available");
+      return;
+    }
+    setLoader(true);
+    try {
+      const restaurantId = removeQuotes(restaurantData.restaurantId)
+      const response = await fetch(`${Constant.host}pos/printer-list?restaurantId=${restaurantId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${restaurantData?.yazo_auth_token || ''}`,
+        }
+      });
+      const result = await response.json();
+      if (result?.status) {
+        let list = result?.data ? result?.data : [];
+        const activePrinter = list.find(p => p.status === "true");
+        if (activePrinter) {
+          setIpAddress(activePrinter?.ipAddress ? activePrinter?.ipAddress : "")
+          const config = { host: activePrinter?.ipAddress, port: port };
+          await storageService.savePrinterConfig(config);
+          setSelectedPrinter(activePrinter);
+        }
       } else {
-        new Toaster().error("Printer Disconnected");
+        console.warn("No printers found");
       }
-    }, 5000)
-  }, [isConnected])
+    } catch (error) {
+      console.error("Failed to fetch printer listing:", error);
+    } finally {
+      setLoader(false);
+    }
+  };
+
+  console.log(selectedPrinter, "-----selectedPrinter---");
+
+  console.log(restaurantData, "---restaurantData");
+
+  console.log(ipAddress, "----ipAddress");
 
 
   return (
     <View style={styles.container}>
       <WebView
+        ref={webviewRef}
         source={{ uri: 'https://pos.yazoeat.com.au/' }}
-        onLoadEnd={() => setLoading(false)}
-        domStorageEnabled={true}
+        injectedJavaScriptBeforeContentLoaded={`true`}
+        onLoadEnd={() => {
+          setLoading(false);
+          setTimeout(getLocalStorage, 1000); // delay to ensure page sets localStorage
+        }}
+        domStorageEnabled
         originWhitelist={['*']}
-        allowUniversalAccessFromFileURLs={true}
-        mixedContentMode='always'
+        allowUniversalAccessFromFileURLs
+        mixedContentMode="always"
         bounces={false}
-        useWebView2={true}
+        useWebView2
         cacheEnabled={false}
-        javaScriptEnabled={true}
+        javaScriptEnabled
         style={styles.webview}
         onMessage={handleMessage}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
-          Alert.alert("WebView Error", `Error: ${nativeEvent?.description || "Unknown error"}`)
+          console.log('WebView Error', nativeEvent?.description || 'Unknown error');
         }}
         onReceivedSslError={(event) => {
-          console.log("SSL error: ", event.nativeEvent);
+          console.log('SSL error:', event.nativeEvent);
         }}
       />
       <Loader visible={loading} />
@@ -108,12 +174,8 @@ const PosScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  webview: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  webview: { flex: 1 },
   loading: {
     position: 'absolute',
     top: 0,

@@ -9,8 +9,8 @@ interface LoaderProps {
 
 const Loader: React.FC<LoaderProps> = ({
     visible,
-    color = '#009800ff', 
-    backgroundColor = 'rgba(255, 255, 255, 0.82)', 
+    color = '#2151ffff',
+    backgroundColor = 'rgba(255, 255, 255, 0.82)',
 }) => {
     return (
         <Modal transparent animationType="fade" visible={visible}>
