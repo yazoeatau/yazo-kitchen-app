@@ -60,25 +60,11 @@ const PosScreen = () => {
   }, [ipAddress]);
 
 
-  const getLocalStorage = () => {
-    webviewRef.current?.injectJavaScript(`
-    (function() {
-      const data = {
-        restaurantId: localStorage.getItem('restaurantId'),
-        yazo_auth_token: localStorage.getItem('yazo_auth_token')
-      };
-      window.ReactNativeWebView.postMessage(JSON.stringify({ localStorage: data }));
-    })();
-    true;
-  `);
-  };
-
-
   const handleMessage = async (event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      if (data?.localStorage) {
-        setRestaurantData(data.localStorage);
+      if (data?.restaurantData) {
+        setRestaurantData(data.restaurantData);
       }
       if (data?.status === 'success' && data?.order) {
         await handleTestPrint(data.order);
@@ -91,22 +77,24 @@ const PosScreen = () => {
 
   useEffect(() => {
     getPrinterListing()
-  }, [restaurantData?.restaurantId])
+  }, [restaurantData?._id])
+
 
   const removeQuotes = (str: string): string => {
     if (!str) return '';
     return str.replace(/^"|"$/g, '');
   };
 
+  
   const getPrinterListing = async () => {
-    if (!restaurantData?.restaurantId) {
+    if (!restaurantData?._id) {
       console.warn("Restaurant ID not available");
       return;
     }
     setLoader(true);
     try {
-      const restaurantId = removeQuotes(restaurantData.restaurantId)
-      const response = await fetch(`${Constant.host}pos/printer-list?restaurantId=${restaurantId}`, {
+      const _id = removeQuotes(restaurantData._id)
+      const response = await fetch(`${Constant.host}pos/printer-list?restaurantId=${_id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -116,7 +104,9 @@ const PosScreen = () => {
       const result = await response.json();
       if (result?.status) {
         let list = result?.data ? result?.data : [];
-        const activePrinter = list.find(p => p.status === "true");
+        console.log(list);
+        
+        const activePrinter = list.find(p => p.selected);
         if (activePrinter) {
           setIpAddress(activePrinter?.ipAddress ? activePrinter?.ipAddress : "")
           const config = { host: activePrinter?.ipAddress, port: port };
@@ -133,11 +123,9 @@ const PosScreen = () => {
     }
   };
 
-  console.log(selectedPrinter, "-----selectedPrinter---");
-
-  console.log(restaurantData, "---restaurantData");
 
   console.log(ipAddress, "----ipAddress");
+
 
 
   return (
@@ -146,10 +134,7 @@ const PosScreen = () => {
         ref={webviewRef}
         source={{ uri: 'https://pos.yazoeat.com.au/' }}
         injectedJavaScriptBeforeContentLoaded={`true`}
-        onLoadEnd={() => {
-          setLoading(false);
-          setTimeout(getLocalStorage, 1000); // delay to ensure page sets localStorage
-        }}
+        onLoadEnd={() => { setLoading(false) }}
         domStorageEnabled
         originWhitelist={['*']}
         allowUniversalAccessFromFileURLs
@@ -163,9 +148,6 @@ const PosScreen = () => {
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.log('WebView Error', nativeEvent?.description || 'Unknown error');
-        }}
-        onReceivedSslError={(event) => {
-          console.log('SSL error:', event.nativeEvent);
         }}
       />
       <Loader visible={loading} />
