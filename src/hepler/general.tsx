@@ -1,8 +1,7 @@
 import printerService from "../services/printerService";
-import { storageService } from "../utils/storage";
 import { Toaster } from "./toaster";
 
-export const handleTestPrint = async (order) => {
+export const handleTestPrint = async (order: any) => {
   try {
     const {
       customerName = "Walk-in Customer",
