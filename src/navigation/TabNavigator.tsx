@@ -24,16 +24,16 @@ export default function TabNavigator() {
         name="Home"
         component={PosScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />
         }}
       />
-       <Tab.Screen
+       {/* <Tab.Screen
         name="Printer"
         component={HomeScreen}
         options={{
           tabBarIcon: ({ color, size }) => <Printer size={size} color={color} />,
         }}
-      />
+      /> */}
     </Tab.Navigator>
   );
 }
