@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "997698748314",
+    "project_id": "yazo-restaurant",
+    "storage_bucket": "yazo-restaurant.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997698748314:android:73ef23e12e268577eb0423",
+        "android_client_info": {
+          "package_name": "com.yazo.restaurant"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAywhN88B72NT28yBqur31dzAp5PvGeW5g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

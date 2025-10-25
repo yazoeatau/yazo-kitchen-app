@@ -7,6 +7,8 @@ import Loader from '../hepler/loader';
 import { Toaster } from '../hepler/toaster';
 import printerService from '../services/printerService';
 import { storageService } from '../utils/storage';
+import { useIsFocused } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface restaurantData {
   [key: string]: string;
@@ -23,10 +25,9 @@ interface Printer {
 const PosScreen = () => {
   const [loading, setLoading] = useState(true);
   const [ipAddress, setIpAddress] = useState('');
-  const [port, setPort] = useState(9100);
+  const [port, setPort] = useState('9100');
   const [restaurantData, setRestaurantData] = useState<restaurantData>({});
-  const [selectedPrinter, setSelectedPrinter] = useState<Printer[]>([]);
-  const [loader, setLoader] = useState(false);
+  const isFocus = useIsFocused();
   const webviewRef = useRef<WebView>(null);
 
 
@@ -53,6 +54,8 @@ const PosScreen = () => {
     printerService.setStatusCallback((status) => {
       if (status.isConnected) {
         new Toaster().success('Printer Connected');
+      } else {
+        new Toaster().error('Printer Disconnected');
       }
     });
     const timer = setTimeout(handleConnect, 2000);
@@ -64,6 +67,7 @@ const PosScreen = () => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data?.restaurantData) {
+        sendFCMTokentoBackend(data.restaurantData)
         setRestaurantData(data.restaurantData);
       }
       if (data?.status === 'success' && data?.order) {
@@ -76,8 +80,13 @@ const PosScreen = () => {
 
 
   useEffect(() => {
-    getPrinterListing()
-  }, [restaurantData?._id])
+    if (restaurantData) {
+      setTimeout(() => {
+        getPrinterListing();
+        sendFCMTokentoBackend(restaurantData)
+      }, 1000)
+    }
+  }, [isFocus, restaurantData]);
 
 
   const removeQuotes = (str: string): string => {
@@ -85,46 +94,67 @@ const PosScreen = () => {
     return str.replace(/^"|"$/g, '');
   };
 
-  
+
+  //--------------- Printer listing ---------------->>
   const getPrinterListing = async () => {
     if (!restaurantData?._id) {
       console.warn("Restaurant ID not available");
       return;
     }
-    setLoader(true);
     try {
       const _id = removeQuotes(restaurantData._id)
       const response = await fetch(`${Constant.host}pos/printer-list?restaurantId=${_id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${restaurantData?.yazo_auth_token || ''}`,
+          'Authorization': `Bearer ${restaurantData?.token || ''}`,
         }
       });
       const result = await response.json();
       if (result?.status) {
         let list = result?.data ? result?.data : [];
         console.log(list);
-        
+
         const activePrinter = list.find(p => p.selected);
         if (activePrinter) {
           setIpAddress(activePrinter?.ipAddress ? activePrinter?.ipAddress : "")
           const config = { host: activePrinter?.ipAddress, port: port };
           await storageService.savePrinterConfig(config);
-          setSelectedPrinter(activePrinter);
         }
       } else {
         console.warn("No printers found");
       }
     } catch (error) {
       console.error("Failed to fetch printer listing:", error);
-    } finally {
-      setLoader(false);
     }
   };
 
 
-  console.log(ipAddress, "----ipAddress");
+  //-------------------- FCM token update ------------->>
+  const sendFCMTokentoBackend = async (restaurantData: any) => {
+    if(!restaurantData) return;
+    let tokenFCM = await AsyncStorage.getItem('fcmToken')
+    const url = `${Constant.host}pos/fcm-token`
+    let body = {
+      token: tokenFCM ? tokenFCM : null,
+      restaurantId: restaurantData?._id ? restaurantData?._id : null
+    }
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: restaurantData?.token ? `Bearer ${restaurantData.token}` : '',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`)
+    }
+    const res = await response.json()
+    if (res && res.status) {
+      console.log('Response :', res)
+    }
+  };
 
 
 
